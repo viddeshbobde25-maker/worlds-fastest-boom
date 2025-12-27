@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Race Verse - 3D Driving Simulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+        
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        #speedometer {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 3px solid #00ff00;
+            border-radius: 50%;
+            width: 150px;
+            height: 150px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #00ff00;
+            font-weight: bold;
+        }
+        
+        #speed {
+            font-size: 48px;
+            line-height: 1;
+        }
+        
+        #speedLabel {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            max-width: 250px;
+        }
+        
+        #controls h3 {
+            margin-bottom: 10px;
+            color: #00ff00;
+        }
+        
+        #controls div {
+            margin: 5px 0;
+        }
+        
+        #cameraInfo {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+        
+        #startScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: all;
+            z-index: 100;
+        }
+        
+        #startScreen h1 {
+            font-size: 72px;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+            margin-bottom: 20px;
+        }
+        
+        #startScreen p {
+            color: #ddd;
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+        
+        #startBtn {
+            padding: 15px 40px;
+            font-size: 24px;
+            background: #00ff00;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #000;
+            pointer-events: all;
+            transition: all 0.3s;
+        }
+        
+        #startBtn:hover {
+            background: #00cc00;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui">
+        <div id="startScreen">
+            <h1>RACE VERSE</h1>
+            <p>Ultimate 3D Driving Simulator</p>
+            <button id="startBtn">START GAME</button>
+        </div>
+        
+        <div id="controls">
+            <h3>CONTROLS</h3>
+            <div><strong>W/↑</strong> - Accelerate</div>
+            <div><strong>S/↓</strong> - Brake/Reverse</div>
+            <div><strong>A/←</strong> - Turn Left</div>
+            <div><strong>D/→</strong> - Turn Right</div>
+            <div><strong>SPACE</strong> - Handbrake</div>
+            <div><strong>C</strong> - Change Camera</div>
+            <div><strong>R</strong> - Reset Car</div>
+        </div>
+        
+        <div id="cameraInfo">Camera: Chase</div>
+        
+        <div id="speedometer">
+            <div id="speed">0</div>
+            <div id="speedLabel">KM/H</div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, car, ground, keys = {};
+        let carVelocity = new THREE.Vector3();
+        let carRotationVel = 0;
+        let cameraMode = 0;
+        const cameraNames = ['Chase', 'Far', 'Hood', 'Top'];
+        
+        // Game state
+        let gameStarted = false;
+        
+        // Car physics
+        const acceleration = 0.3;
+        const maxSpeed = 2.5;
+        const friction = 0.95;
+        const turnSpeed = 0.03;
+        const brakeForce = 0.97;
+        
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.Fog(0x87ceeb, 0, 300);
+            
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            // Renderer
+            const canvas = document.getElementById('gameCanvas');
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            sunLight.position.set(50, 50, 50);
+            sunLight.castShadow = true;
+            sunLight.shadow.camera.left = -100;
+            sunLight.shadow.camera.right = 100;
+            sunLight.shadow.camera.top = 100;
+            sunLight.shadow.camera.bottom = -100;
+            scene.add(sunLight);
+            
+            // Ground
+            const groundGeometry = new THREE.PlaneGeometry(500, 500);
+            const groundMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x3a7a3a,
+                side: THREE.DoubleSide 
+            });
+            ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+            
+            // Road texture
+            createRoads();
+            
+            // Create car
+            createCar();
+            
+            // Add buildings
+            createCity();
+            
+            // Event listeners
+            document.getElementById('startBtn').addEventListener('click', startGame);
+            window.addEventListener('keydown', (e) => {
+                keys[e.key.toLowerCase()] = true;
+                if (e.key.toLowerCase() === 'c') changeCamera();
+                if (e.key.toLowerCase() === 'r') resetCar();
+            });
+            window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+            window.addEventListener('resize', onWindowResize);
+            
+            // Start animation loop
+            animate();
+        }
+        
+        function startGame() {
+            document.getElementById('startScreen').style.display = 'none';
+            gameStarted = true;
+        }
+        
+        function createCar() {
+            car = new THREE.Group();
+            
+            // Car body
+            const bodyGeometry = new THREE.BoxGeometry(2, 1, 4);
+            const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.5;
+            body.castShadow = true;
+            car.add(body);
+            
+            // Car roof
+            const roofGeometry = new THREE.BoxGeometry(1.8, 0.8, 2.5);
+            const roof = new THREE.Mesh(roofGeometry, bodyMaterial);
+            roof.position.set(0, 1.3, -0.3);
+            roof.castShadow = true;
+            car.add(roof);
+            
+            // Wheels
+            const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+            const wheelMaterial = new THREE.MeshPhongMaterial({ color: 0x222222 });
+            
+            const wheelPositions = [
+                [-1.1, 0.4, 1.5],
+                [1.1, 0.4, 1.5],
+                [-1.1, 0.4, -1.5],
+                [1.1, 0.4, -1.5]
+            ];
+            
+            wheelPositions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(pos[0], pos[1], pos[2]);
+                wheel.castShadow = true;
+                car.add(wheel);
+            });
+            
+            // Headlights
+            const lightGeometry = new THREE.BoxGeometry(0.3, 0.2, 0.2);
+            const lightMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xffff00,
+                emissive: 0xffff00,
+                emissiveIntensity: 0.5
+            });
+            
+            const leftLight = new THREE.Mesh(lightGeometry, lightMaterial);
+            leftLight.position.set(-0.7, 0.5, 2.1);
+            car.add(leftLight);
+            
+            const rightLight = new THREE.Mesh(lightGeometry, lightMaterial);
+            rightLight.position.set(0.7, 0.5, 2.1);
+            car.add(rightLight);
+            
+            car.position.y = 1;
+            scene.add(car);
+        }
+        
+        function createRoads() {
+            const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x444444 });
+            
+            // Main roads
+            const road1 = new THREE.Mesh(
+                new THREE.PlaneGeometry(10, 200),
+                roadMaterial
+            );
+            road1.rotation.x = -Math.PI / 2;
+            road1.position.y = 0.01;
+            road1.receiveShadow = true;
+            scene.add(road1);
+            
+            const road2 = new THREE.Mesh(
+                new THREE.PlaneGeometry(200, 10),
+                roadMaterial
+            );
+            road2.rotation.x = -Math.PI / 2;
+            road2.position.y = 0.01;
+            road2.receiveShadow = true;
+            scene.add(road2);
+            
+            // Road lines
+            const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            for (let i = -100; i < 100; i += 10) {
+                const line = new THREE.Mesh(
+                    new THREE.PlaneGeometry(0.3, 5),
+                    lineMaterial
+                );
+                line.rotation.x = -Math.PI / 2;
+                line.position.set(0, 0.02, i);
+                scene.add(line);
+                
+                const line2 = new THREE.Mesh(
+                    new THREE.PlaneGeometry(5, 0.3),
+                    lineMaterial
+                );
+                line2.rotation.x = -Math.PI / 2;
+                line2.position.set(i, 0.02, 0);
+                scene.add(line2);
+            }
+        }
+        
+        function createCity() {
+            const buildingMaterial = new THREE.MeshLambertMaterial({ color: 0x808080 });
+            
+            for (let i = 0; i < 30; i++) {
+                const width = Math.random() * 10 + 5;
+                const height = Math.random() * 30 + 10;
+                const depth = Math.random() * 10 + 5;
+                
+                const building = new THREE.Mesh(
+                    new THREE.BoxGeometry(width, height, depth),
+                    buildingMaterial
+                );
+                
+                let x = (Math.random() - 0.5) * 200;
+                let z = (Math.random() - 0.5) * 200;
+                
+                // Avoid placing on roads
+                if (Math.abs(x) < 15) x = x > 0 ? 20 : -20;
+                if (Math.abs(z) < 15) z = z > 0 ? 20 : -20;
+                
+                building.position.set(x, height / 2, z);
+                building.castShadow = true;
+                building.receiveShadow = true;
+                scene.add(building);
+            }
+            
+            // Add some trees
+            const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x228b22 });
+            const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
+            
+            for (let i = 0; i < 50; i++) {
+                const tree = new THREE.Group();
+                
+                const trunk = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.4, 3),
+                    trunkMaterial
+                );
+                trunk.position.y = 1.5;
+                tree.add(trunk);
+                
+                const foliage = new THREE.Mesh(
+                    new THREE.SphereGeometry(2, 8, 8),
+                    treeMaterial
+                );
+                foliage.position.y = 4;
+                tree.add(foliage);
+                
+                let x = (Math.random() - 0.5) * 200;
+                let z = (Math.random() - 0.5) * 200;
+                
+                if (Math.abs(x) < 15) x = x > 0 ? 25 : -25;
+                if (Math.abs(z) < 15) z = z > 0 ? 25 : -25;
+                
+                tree.position.set(x, 0, z);
+                scene.add(tree);
+            }
+        }
+        
+        function updateCar() {
+            if (!gameStarted) return;
+            
+            let accelerating = false;
+            
+            // Acceleration
+            if (keys['w'] || keys['arrowup']) {
+                const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(car.quaternion);
+                carVelocity.add(forward.multiplyScalar(acceleration));
+                accelerating = true;
+            }
+            
+            // Brake/Reverse
+            if (keys['s'] || keys['arrowdown']) {
+                const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(car.quaternion);
+                carVelocity.add(forward.multiplyScalar(-acceleration * 0.7));
+                accelerating = true;
+            }
+            
+            // Handbrake
+            if (keys[' ']) {
+                carVelocity.multiplyScalar(brakeForce);
+            }
+            
+            // Turning
+            const speed = carVelocity.length();
+            if (speed > 0.1) {
+                if (keys['a'] || keys['arrowleft']) {
+                    carRotationVel += turnSpeed;
+                }
+                if (keys['d'] || keys['arrowright']) {
+                    carRotationVel -= turnSpeed;
+                }
+            }
+            
+            // Apply rotation
+            car.rotation.y += carRotationVel * speed;
+            carRotationVel *= 0.9;
+            
+            // Limit speed
+            if (carVelocity.length() > maxSpeed) {
+                carVelocity.normalize().multiplyScalar(maxSpeed);
+            }
+            
+            // Apply friction
+            if (!accelerating) {
+                carVelocity.multiplyScalar(friction);
+            }
+            
+            // Update position
+            car.position.add(carVelocity);
+            
+            // Update speedometer
+            const speedKmh = Math.round(carVelocity.length() * 50);
+            document.getElementById('speed').textContent = speedKmh;
+        }
+        
+        function updateCamera() {
+            if (!car) return;
+            
+            const carPos = car.position;
+            const carRot = car.rotation.y;
+            
+            switch(cameraMode) {
+                case 0: // Chase camera
+                    const chaseDistance = 15;
+                    const chaseHeight = 5;
+                    camera.position.x = carPos.x - Math.sin(carRot) * chaseDistance;
+                    camera.position.z = carPos.z - Math.cos(carRot) * chaseDistance;
+                    camera.position.y = carPos.y + chaseHeight;
+                    camera.lookAt(carPos);
+                    break;
+                    
+                case 1: // Far camera
+                    const farDistance = 25;
+                    const farHeight = 10;
+                    camera.position.x = carPos.x - Math.sin(carRot) * farDistance;
+                    camera.position.z = carPos.z - Math.cos(carRot) * farDistance;
+                    camera.position.y = carPos.y + farHeight;
+                    camera.lookAt(carPos);
+                    break;
+                    
+                case 2: // Hood camera
+                    camera.position.x = carPos.x + Math.sin(carRot) * 2;
+                    camera.position.z = carPos.z + Math.cos(carRot) * 2;
+                    camera.position.y = carPos.y + 2;
+                    const lookAhead = new THREE.Vector3(
+                        carPos.x + Math.sin(carRot) * 10,
+                        carPos.y + 1,
+                        carPos.z + Math.cos(carRot) * 10
+                    );
+                    camera.lookAt(lookAhead);
+                    break;
+                    
+                case 3: // Top camera
+                    camera.position.x = carPos.x;
+                    camera.position.z = carPos.z;
+                    camera.position.y = carPos.y + 30;
+                    camera.lookAt(carPos);
+                    break;
+            }
+        }
+        
+        function changeCamera() {
+            cameraMode = (cameraMode + 1) % 4;
+            document.getElementById('cameraInfo').textContent = `Camera: ${cameraNames[cameraMode]}`;
+        }
+        
+        function resetCar() {
+            car.position.set(0, 1, 0);
+            car.rotation.set(0, 0, 0);
+            carVelocity.set(0, 0, 0);
+            carRotationVel = 0;
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            updateCar();
+            updateCamera();
+            
+            renderer.render(scene, camera);
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        init();
+    </script>
+</body>
+</html>
